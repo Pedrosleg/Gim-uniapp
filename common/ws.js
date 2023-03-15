@@ -9,6 +9,7 @@ class Chat {
 		this.conn = null
 		this.socketTask = null
 		this.connecting = false
+		this.wsIp =  '127.0.0.1'
 	}
 	
 	static getInstance() {
@@ -16,6 +17,10 @@ class Chat {
 			this.instance = new Chat
 		}
 		return this.instance
+	}
+	
+	setWsIp(wsIp) {
+		this.wsIp = wsIp
 	}
 	
 	/**
@@ -26,7 +31,7 @@ class Chat {
 		try {
 			
 			this.socketTask = uni.connectSocket({
-			  url: 'ws://127.0.0.1:8081/websocket',
+			  url: 'ws://' + this.wsIp + ':8081/websocket',
 			  success() {
 				  console.log("正在建立链接")
 				  return this.socketTask
@@ -41,8 +46,6 @@ class Chat {
 			
 			this.socketTask.onOpen((e) => {
 				console.log("连接已打开")
-				
-				console.log(Gtx.getLogin())
 				
 				let loginMsg = new LoginMsgBuilder()
 					.setFr(Gtx.getLogin().uid)

@@ -24,7 +24,7 @@ class MsgBuilder {
 			msgId: nowTimestamp + '_' + Math.random().toString(36).substr(2, 9),
 			fr: this.fr,
 			to: this.to,
-			sendTimestamp: Math.ceil(nowTimestamp/1000),
+			sendTimestamp: nowTimestamp,
 			msgType: this.msgType,
 		}
 	}

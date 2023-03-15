@@ -1157,7 +1157,7 @@ if (uni.restoreGlobal) {
         msgId: nowTimestamp + "_" + Math.random().toString(36).substr(2, 9),
         fr: this.fr,
         to: this.to,
-        sendTimestamp: Math.ceil(nowTimestamp / 1e3),
+        sendTimestamp: nowTimestamp,
         msgType: this.msgType
       };
     }
@@ -1195,6 +1195,7 @@ if (uni.restoreGlobal) {
       this.conn = null;
       this.socketTask = null;
       this.connecting = false;
+      this.wsIp = "127.0.0.1";
     }
     static getInstance() {
       if (!this.instance) {
@@ -1202,38 +1203,40 @@ if (uni.restoreGlobal) {
       }
       return this.instance;
     }
+    setWsIp(wsIp) {
+      this.wsIp = wsIp;
+    }
     /**
      * 建立连接
      */
     connect() {
       try {
         this.socketTask = uni.connectSocket({
-          url: "ws://127.0.0.1:8081/websocket",
+          url: "ws://" + this.wsIp + ":8081/websocket",
           success() {
-            formatAppLog("log", "at common/ws.js:31", "正在建立链接");
+            formatAppLog("log", "at common/ws.js:36", "正在建立链接");
             return this.socketTask;
           }
         });
         this.socketTask.onMessage((data) => {
-          formatAppLog("log", "at common/ws.js:38", "收到数据:" + data.data);
+          formatAppLog("log", "at common/ws.js:43", "收到数据:" + data.data);
           this.onMessage(JSON.parse(data.data));
         });
         this.socketTask.onOpen((e) => {
-          formatAppLog("log", "at common/ws.js:43", "连接已打开");
-          formatAppLog("log", "at common/ws.js:45", Gtx.getLogin());
+          formatAppLog("log", "at common/ws.js:48", "连接已打开");
           let loginMsg = new LoginMsgBuilder().setFr(Gtx.getLogin().uid).setMsgType(consts.MSG_TYPE.LOGIN).build();
           this.send(loginMsg);
         });
         this.socketTask.onError((e) => {
-          formatAppLog("log", "at common/ws.js:56", "连接报错");
+          formatAppLog("log", "at common/ws.js:59", "连接报错");
           this.reconnect("e");
         });
         this.socketTask.onClose((e) => {
-          formatAppLog("log", "at common/ws.js:61", "链接已经关闭");
+          formatAppLog("log", "at common/ws.js:64", "链接已经关闭");
           this.reconnect("c");
         });
       } catch (e) {
-        formatAppLog("log", "at common/ws.js:66", e);
+        formatAppLog("log", "at common/ws.js:69", e);
       }
     }
     reconnect(tag) {
@@ -1242,7 +1245,7 @@ if (uni.restoreGlobal) {
       }
       this.connecting = true;
       setTimeout(() => {
-        formatAppLog("log", "at common/ws.js:77", "开始重连...");
+        formatAppLog("log", "at common/ws.js:80", "开始重连...");
         this.connect();
         this.connecting = false;
       }, 3e3);
@@ -1267,7 +1270,7 @@ if (uni.restoreGlobal) {
           data: d
         });
       } catch (e) {
-        formatAppLog("log", "at common/ws.js:106", e);
+        formatAppLog("log", "at common/ws.js:109", e);
       }
     }
   }
@@ -1302,6 +1305,17 @@ if (uni.restoreGlobal) {
       };
     }
   }
+  class DateFormat {
+    static transform(timestamp) {
+      let date = new Date();
+      let date2 = new Date(timestamp);
+      if (date2.getFullYear() + date2.getMonth() + date2.getDate() == date.getFullYear() + date.getMonth() + date.getDate()) {
+        return date2.getHours() + ":" + date2.getMinutes();
+      } else {
+        return date2.getMonth() + "-" + date2.getDate();
+      }
+    }
+  }
   const _export_sfc = (sfc, props) => {
     const target = sfc.__vccOpts || sfc;
     for (const [key, val] of props) {
@@ -1327,14 +1341,15 @@ if (uni.restoreGlobal) {
             let chatViews = [];
             for (let toUid in store.state.msgs) {
               let msgs = store.state.msgs[toUid];
+              let lastMsg = msgs[msgs.length - 1];
               let tipCount = store.state.tipCount[toUid] == void 0 ? 0 : store.state.tipCount[toUid];
-              let session = new SessionBuilder().setAvatar("../../static/botAvatar.png").setName(toUid).setDate("12:00").setText(msgs[msgs.length - 1].data.text).setTipCount(tipCount).build();
+              let session = new SessionBuilder().setAvatar("../../static/botAvatar.png").setName(toUid).setDate(DateFormat.transform(lastMsg.sendTimestamp)).setText(lastMsg.data.text).setTipCount(tipCount).build();
               chatViews.push(session);
             }
             return chatViews;
           }
         } catch (e) {
-          formatAppLog("log", "at pages/tabBar/index.vue:82", e);
+          formatAppLog("log", "at pages/tabBar/index.vue:84", e);
         }
       }
     },
@@ -1398,7 +1413,13 @@ if (uni.restoreGlobal) {
                   /* TEXT */
                 )
               ]),
-              vue.createElementVNode("view", { class: "dateView" }, "14:00")
+              vue.createElementVNode(
+                "view",
+                { class: "dateView" },
+                vue.toDisplayString(chatView.date),
+                1
+                /* TEXT */
+              )
             ], 8, ["onClick"])
           ]);
         }),
@@ -1407,7 +1428,7 @@ if (uni.restoreGlobal) {
       ))
     ]);
   }
-  const PagesTabBarIndex = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$3], ["__file", "/Users/momo/P/Gim/pages/tabBar/index.vue"]]);
+  const PagesTabBarIndex = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$3], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/index.vue"]]);
   const _sfc_main$3 = {
     data() {
       return {
@@ -1429,11 +1450,27 @@ if (uni.restoreGlobal) {
       },
       u_input(e) {
         this.username = e.detail.value;
+      },
+      setting() {
+        uni.showModal({
+          title: "设置ws地址",
+          editable: true,
+          success: function(res) {
+            if (res.confirm) {
+              Chat.getInstance().setWsIp(res.content);
+            }
+          }
+        });
       }
     }
   };
   function _sfc_render$2(_ctx, _cache, $props, $setup, $data, $options) {
     return vue.openBlock(), vue.createElementBlock("view", { class: "content" }, [
+      vue.createElementVNode("image", {
+        onClick: _cache[0] || (_cache[0] = (...args) => $options.setting && $options.setting(...args)),
+        class: "setting",
+        src: "/static/setting.png"
+      }),
       vue.createElementVNode("view", { style: { "text-align": "center" } }, [
         vue.createElementVNode("image", {
           class: "logo",
@@ -1446,7 +1483,7 @@ if (uni.restoreGlobal) {
           type: "text",
           placeholder: "账号",
           value: $data.username,
-          onInput: _cache[0] || (_cache[0] = (...args) => $options.u_input && $options.u_input(...args))
+          onInput: _cache[1] || (_cache[1] = (...args) => $options.u_input && $options.u_input(...args))
         }, null, 40, ["value"]),
         vue.createElementVNode("input", {
           class: "input",
@@ -1456,12 +1493,12 @@ if (uni.restoreGlobal) {
         }, null, 8, ["value"]),
         vue.createElementVNode("view", {
           class: "confirm",
-          onClick: _cache[1] || (_cache[1] = (...args) => $options.login && $options.login(...args))
+          onClick: _cache[2] || (_cache[2] = (...args) => $options.login && $options.login(...args))
         }, "登录")
       ])
     ]);
   }
-  const PagesTabBarLogin = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__file", "/Users/momo/P/Gim/pages/tabBar/login.vue"]]);
+  const PagesTabBarLogin = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/login.vue"]]);
   const _sfc_main$2 = {
     data() {
       return {
@@ -1487,13 +1524,13 @@ if (uni.restoreGlobal) {
                 dt += d.height;
               });
               this.scrollRealHeight = dt;
-              formatAppLog("log", "at pages/tabBar/chat.vue:65", this.scrollRealHeight);
+              formatAppLog("log", "at pages/tabBar/chat.vue:66", this.scrollRealHeight);
               this.scrollTop = this.scrollRealHeight - parseInt(this.msgViewsHeight);
-              formatAppLog("log", "at pages/tabBar/chat.vue:67", this.scrollTop);
+              formatAppLog("log", "at pages/tabBar/chat.vue:68", this.scrollTop);
             }).exec();
           }, 10);
         } catch (e) {
-          formatAppLog("log", "at pages/tabBar/chat.vue:72", e);
+          formatAppLog("log", "at pages/tabBar/chat.vue:73", e);
         }
         let msgs = store.state.msgs[this.toUid] == void 0 ? [] : store.state.msgs[this.toUid];
         if (msgs.length != 0) {
@@ -1519,7 +1556,7 @@ if (uni.restoreGlobal) {
     },
     methods: {
       add(e) {
-        formatAppLog("log", "at pages/tabBar/chat.vue:115", e);
+        formatAppLog("log", "at pages/tabBar/chat.vue:116", e);
       },
       theBlur(e) {
         this.val = e.detail.value;
@@ -1532,8 +1569,11 @@ if (uni.restoreGlobal) {
           Chat.getInstance().pushMsg(textMsg);
           this.val = "";
         } catch (e) {
-          formatAppLog("log", "at pages/tabBar/chat.vue:139", e);
+          formatAppLog("log", "at pages/tabBar/chat.vue:140", e);
         }
+      },
+      dateTransform(t) {
+        return DateFormat.transform(t);
       }
     }
   };
@@ -1565,7 +1605,13 @@ if (uni.restoreGlobal) {
                       1
                       /* TEXT */
                     ),
-                    vue.createElementVNode("view", null, "12:00")
+                    vue.createElementVNode(
+                      "view",
+                      null,
+                      vue.toDisplayString($options.dateTransform(msgView.sendTimestamp)),
+                      1
+                      /* TEXT */
+                    )
                   ]),
                   vue.createElementVNode(
                     "view",
@@ -1611,46 +1657,51 @@ if (uni.restoreGlobal) {
       )
     ]);
   }
-  const PagesTabBarChat = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render$1], ["__file", "/Users/momo/P/Gim/pages/tabBar/chat.vue"]]);
+  const PagesTabBarChat = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render$1], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/chat.vue"]]);
   const _sfc_main$1 = {
     data() {
-      return {
-        message: "",
-        a: false,
-        olda: false
-      };
-    },
-    onLoad() {
-    },
-    onShow() {
+      return {};
     },
     methods: {
-      greet(event) {
-        this.$nextTick(function() {
-          this.a = true;
+      quit() {
+        Gtx.login("");
+        uni.reLaunch({
+          url: "/pages/tabBar/login"
         });
       }
     }
   };
   function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
-    return vue.openBlock(), vue.createElementBlock(
-      vue.Fragment,
-      null,
-      [
-        vue.createElementVNode("div"),
-        vue.createElementVNode("view", { class: "content" }, [
-          vue.createElementVNode("image", {
-            class: "logo",
-            src: "/static/logo.png"
-          }),
-          vue.createElementVNode("view", { class: "text-area" }, " 1111111 ")
+    return vue.openBlock(), vue.createElementBlock("view", { class: "content" }, [
+      vue.createElementVNode("view", { class: "header" }, [
+        vue.createElementVNode("image", {
+          class: "avatar",
+          src: "/static/avatar.png"
+        }),
+        vue.createElementVNode("view", { class: "relation" }, [
+          vue.createElementVNode("view", { class: "number" }, "12"),
+          vue.createElementVNode("view", { class: "text" }, "好友")
+        ]),
+        vue.createElementVNode("view", { class: "relation" }, [
+          vue.createElementVNode("view", { class: "number" }, "47"),
+          vue.createElementVNode("view", { class: "text" }, "群组")
+        ]),
+        vue.createElementVNode("view", { class: "relation" }, [
+          vue.createElementVNode("view", { class: "number" }, "5"),
+          vue.createElementVNode("view", { class: "text" }, "聊天室")
         ])
-      ],
-      64
-      /* STABLE_FRAGMENT */
-    );
+      ]),
+      vue.createElementVNode("view", { style: { "display": "flex", "flex-direction": "row", "width": "100%" } }, [
+        vue.createElementVNode("view", { class: "name" }, "卡卡迪曼")
+      ]),
+      vue.createElementVNode("view", { class: "sign" }, " 签名：他写了个寂寞，并且一脸无辜～ "),
+      vue.createElementVNode("view", {
+        class: "setting",
+        onClick: _cache[0] || (_cache[0] = (...args) => $options.quit && $options.quit(...args))
+      }, "退出")
+    ]);
   }
-  const PagesTabBarMy = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["render", _sfc_render], ["__file", "/Users/momo/P/Gim/pages/tabBar/my.vue"]]);
+  const PagesTabBarMy = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["render", _sfc_render], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/my.vue"]]);
   __definePage("pages/tabBar/index", PagesTabBarIndex);
   __definePage("pages/tabBar/login", PagesTabBarLogin);
   __definePage("pages/tabBar/chat", PagesTabBarChat);
@@ -1666,7 +1717,7 @@ if (uni.restoreGlobal) {
       formatAppLog("log", "at App.vue:10", "App Hide");
     }
   };
-  const App = /* @__PURE__ */ _export_sfc(_sfc_main, [["__file", "/Users/momo/P/Gim/App.vue"]]);
+  const App = /* @__PURE__ */ _export_sfc(_sfc_main, [["__file", "/Users/momo/P/Gim-uniapp/App.vue"]]);
   function createApp() {
     const app = vue.createVueApp(App);
     app.use(store);

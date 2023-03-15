@@ -1,5 +1,6 @@
 <template>
 	<view class="content">
+		<image @click="setting" class="setting" src="../../static/setting.png"></image>
 		<view style="text-align: center;">
 			<image class="logo" src="../../static/login.png"></image>
 		</view>
@@ -13,8 +14,9 @@
 
 <script>	
 
-	import store from "@/store/index.js"
-	import {Gtx} from "@/common/gtx.js"
+	import store from '@/store/index.js'
+	import {Gtx} from '@/common/gtx.js'
+	import Chat from '@/common/ws.js'
 	
 	export default {
 		
@@ -45,6 +47,18 @@
 			},
 			u_input(e) {
 				this.username = e.detail.value
+			},
+			
+			setting() {
+				uni.showModal({
+					title: "设置ws地址",
+					editable: true,
+					success: function(res) {
+						if (res.confirm) {
+							Chat.getInstance().setWsIp(res.content)
+						}
+					}
+				})
 			}
 		}
 		
@@ -79,6 +93,12 @@
 		text-align: center;
 		line-height: 60px;
 		background-color: #d1f879;
+	}
+	.setting {
+		position: absolute;
+		right: 20px;
+		width: 20px;
+		height:20px;
 	}
 	.content {
 		font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;

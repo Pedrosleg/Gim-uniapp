@@ -7,7 +7,7 @@
 							<view class="textView">
 								<view class="textTitle">
 									<view style="margin-right: 10px;">{{msgView.fr}}</view>
-									<view>12:00</view>
+									<view>{{dateTransform(msgView.sendTimestamp)}}</view>
 								</view>
 								<view class="textContent">{{msgView.data.text}}</view>
 							</view>
@@ -31,6 +31,7 @@
 	import consts from '@/common/consts.js'
 	import {Gtx} from '@/common/gtx.js'
 	import {ReadMsgsBuilder, TextMsgBuilder} from '@/common/builders/msgBuilder.js'
+	import {DateFormat} from '@/common/dateFormat.js'
 	
 	export default {
 		
@@ -138,6 +139,9 @@
 				} catch (e) {
 					console.log(e)
 				}
+			},
+			dateTransform(t) {
+				return DateFormat.transform(t)
 			}
 		}
 	}

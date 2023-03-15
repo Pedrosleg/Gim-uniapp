@@ -11,7 +11,7 @@
 					<view class="username">{{chatView.name}}</view>
 					<view class="text">{{chatView.text}}</view>
 				</view>
-				<view class="dateView">14:00</view>
+				<view class="dateView">{{chatView.date}}</view>
 			</view>
 		</scroll-view>
 	</view>
@@ -24,6 +24,7 @@
 	import {Gtx} from '@/common/gtx.js'
 	import store from '@/store/index.js'
 	import {SessionBuilder} from '@/common/builders/sessionBuilder.js'
+	import {DateFormat} from '@/common/dateFormat.js'
 	
 	export default {
 		
@@ -63,6 +64,7 @@
 						
 						for (let toUid in store.state.msgs) {
 							let msgs = store.state.msgs[toUid]
+							let lastMsg = msgs[msgs.length - 1]
 							
 							let tipCount = store.state.tipCount[toUid] == undefined ? 0 :
 								store.state.tipCount[toUid]
@@ -70,8 +72,8 @@
 							let session = new SessionBuilder()
 								.setAvatar("../../static/botAvatar.png")
 								.setName(toUid)
-								.setDate("12:00")
-								.setText(msgs[msgs.length - 1].data.text)
+								.setDate(DateFormat.transform(lastMsg.sendTimestamp))
+								.setText(lastMsg.data.text)
 								.setTipCount(tipCount)
 								.build()
 							chatViews.push(session)

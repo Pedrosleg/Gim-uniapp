@@ -4,7 +4,8 @@
 			"path": "pages/tabBar/index",
 			
 			"style": {
-				"navigationBarTitleText": "消息"
+				"navigationBarTitleText": "消息",
+				"navigationBarBackgroundColor": "#ffffff"
 			}
 		},
 		{
@@ -18,14 +19,16 @@
 		{
 			"path": "pages/tabBar/chat",
 			"style": {
-				"navigationBarTitleText": ""
+				"backgroundColor": "#ffffff",
+				"navigationBarTitleText": "",
+				"navigationBarBackgroundColor": "#ffffff"
 			}
 		},
 		{
 			"path": "pages/tabBar/my",
 			"style": {
-				"navigationBarTitleText": "我的"
-				
+				"navigationBarTitleText": "",
+				"navigationBarBackgroundColor": "#ffffff"
 			}
 		}
 	],
