@@ -58,7 +58,6 @@ class Chat {
 				this.reconnectTimes = 0
 				this.login()
 				this.pullMsg()
-				
 			})
 			
 	
