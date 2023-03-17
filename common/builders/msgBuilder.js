@@ -48,7 +48,7 @@ export class TextMsgBuilder extends MsgBuilder {
 	
 	build() {
 		let d = super.build()
-		d['data'] = {
+		d['body'] = {
 			text: this.text
 		}
 		return d
@@ -67,9 +67,34 @@ export class ReadMsgsBuilder extends MsgBuilder {
 	
 	build() {
 		let d = super.build()
-		d['data'] = {
+		d['body'] = {
 			readMsgIds: this.readMsgIds
 		}
 		return d
 	}
+}
+
+/**
+ * 拉消息
+ */
+export class PullMsgBuilder extends MsgBuilder {}
+
+/**
+ * 收到消息
+ */
+export class ReceiveMsgBuilder extends MsgBuilder {
+	
+	setSeqs(seqs) {
+		this.seqs = seqs
+		return this
+	}
+	
+	build() {
+		let d = super.build()
+		d['body'] = {
+			seqs: this.seqs
+		}
+		return d
+	}
+	
 }

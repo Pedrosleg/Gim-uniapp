@@ -11,6 +11,8 @@ export default createStore({
 		readMsgs: [],
 		//未读消息数
 		tipCount: {},
+		//ws连接进度描述
+		connectProcess: 'ok'
 	},
 	
 	mutations: {
@@ -31,6 +33,9 @@ export default createStore({
 				state.tipCount[uid] = 0
 			}
 			state.tipCount[uid] += count
+		},
+		setConnectProcess(state, text) {
+			state.connectProcess = text
 		}
 	}
 	

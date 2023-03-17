@@ -111,13 +111,13 @@
       "backgroundColor": "#ffffff",
       "list": [
         {
-          "pagePath": "pages/tabBar/index",
+          "pagePath": "pages/index",
           "iconPath": "/static/tb-im.png",
           "selectedIconPath": "/static/tb-im-selected.png",
           "text": "消息"
         },
         {
-          "pagePath": "pages/tabBar/my",
+          "pagePath": "pages/my",
           "iconPath": "/static/tb-my.png",
           "selectedIconPath": "/static/tb-my-selected.png",
           "text": "我的"

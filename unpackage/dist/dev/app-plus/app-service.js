@@ -42,7 +42,9 @@ if (uni.restoreGlobal) {
     MSG_TYPE: {
       TEXT: "text",
       LOGIN: "login",
-      READ_MSG: "readMsg"
+      READ_MSG: "readMsg",
+      PULL_MSG: "pullMsg",
+      RECEIVE_MSG: "receiveMsg"
     }
   };
   class Gtx {
@@ -1115,7 +1117,9 @@ if (uni.restoreGlobal) {
       //已读消息列表
       readMsgs: [],
       //未读消息数
-      tipCount: {}
+      tipCount: {},
+      //ws连接进度描述
+      connectProcess: "ok"
     },
     mutations: {
       push(state, data) {
@@ -1135,6 +1139,9 @@ if (uni.restoreGlobal) {
           state.tipCount[uid] = 0;
         }
         state.tipCount[uid] += count;
+      },
+      setConnectProcess(state, text) {
+        state.connectProcess = text;
       }
     }
   });
@@ -1171,7 +1178,7 @@ if (uni.restoreGlobal) {
     }
     build() {
       let d = super.build();
-      d["data"] = {
+      d["body"] = {
         text: this.text
       };
       return d;
@@ -1184,18 +1191,32 @@ if (uni.restoreGlobal) {
     }
     build() {
       let d = super.build();
-      d["data"] = {
+      d["body"] = {
         readMsgIds: this.readMsgIds
+      };
+      return d;
+    }
+  }
+  class PullMsgBuilder extends MsgBuilder {
+  }
+  class ReceiveMsgBuilder extends MsgBuilder {
+    setSeqs(seqs) {
+      this.seqs = seqs;
+      return this;
+    }
+    build() {
+      let d = super.build();
+      d["body"] = {
+        seqs: this.seqs
       };
       return d;
     }
   }
   class Chat {
     constructor() {
-      this.conn = null;
       this.socketTask = null;
       this.connecting = false;
-      this.wsIp = "127.0.0.1";
+      this.reconnectTimes = 0;
     }
     static getInstance() {
       if (!this.instance) {
@@ -1203,8 +1224,15 @@ if (uni.restoreGlobal) {
       }
       return this.instance;
     }
+    getWsIp() {
+      if (!this.wsIp && !(this.wsIp = uni.getStorageSync("wsIp"))) {
+        this.wsIp = "127.0.0.1";
+      }
+      return this.wsIp;
+    }
     setWsIp(wsIp) {
       this.wsIp = wsIp;
+      uni.setStorageSync("wsIp", wsIp);
     }
     /**
      * 建立连接
@@ -1212,43 +1240,55 @@ if (uni.restoreGlobal) {
     connect() {
       try {
         this.socketTask = uni.connectSocket({
-          url: "ws://" + this.wsIp + ":8081/websocket",
+          url: "ws://" + this.getWsIp() + ":8081/websocket",
           success() {
-            formatAppLog("log", "at common/ws.js:36", "正在建立链接");
+            formatAppLog("log", "at common/ws.js:44", "开始建立连接");
             return this.socketTask;
           }
         });
         this.socketTask.onMessage((data) => {
-          formatAppLog("log", "at common/ws.js:43", "收到数据:" + data.data);
+          formatAppLog("log", "at common/ws.js:51", "收到数据:" + data.data);
           this.onMessage(JSON.parse(data.data));
         });
         this.socketTask.onOpen((e) => {
-          formatAppLog("log", "at common/ws.js:48", "连接已打开");
-          let loginMsg = new LoginMsgBuilder().setFr(Gtx.getLogin().uid).setMsgType(consts.MSG_TYPE.LOGIN).build();
-          this.send(loginMsg);
+          formatAppLog("log", "at common/ws.js:56", "连接已打开");
+          store.commit("setConnectProcess", "ok");
+          this.reconnectTimes = 0;
+          this.login();
+          this.pullMsg();
         });
         this.socketTask.onError((e) => {
-          formatAppLog("log", "at common/ws.js:59", "连接报错");
-          this.reconnect("e");
+          this.reconnect();
         });
         this.socketTask.onClose((e) => {
-          formatAppLog("log", "at common/ws.js:64", "链接已经关闭");
-          this.reconnect("c");
+          this.reconnect();
         });
       } catch (e) {
-        formatAppLog("log", "at common/ws.js:69", e);
+        formatAppLog("log", "at common/ws.js:74", e);
       }
     }
-    reconnect(tag) {
+    login() {
+      let loginMsg = new LoginMsgBuilder().setFr(Gtx.getLogin().uid).setMsgType(consts.MSG_TYPE.LOGIN).build();
+      this.send(loginMsg);
+    }
+    pullMsg() {
+      let pullMsg = new PullMsgBuilder().setFr(Gtx.getLogin().uid).setMsgType(consts.MSG_TYPE.PULL_MSG).build();
+      this.send(pullMsg);
+    }
+    recevieMsg(seqs) {
+      let receiveMsg = new ReceiveMsgBuilder().setFr(Gtx.getLogin().uid).setMsgType(consts.MSG_TYPE.RECEIVE_MSG).setSeqs(seqs).build();
+      this.send(receiveMsg);
+    }
+    reconnect() {
       if (this.connecting) {
         return;
       }
+      store.commit("setConnectProcess", "连接失败,第" + ++this.reconnectTimes + "次重连..." + this.wsIp);
       this.connecting = true;
       setTimeout(() => {
-        formatAppLog("log", "at common/ws.js:80", "开始重连...");
         this.connect();
         this.connecting = false;
-      }, 3e3);
+      }, 2e3);
     }
     pushMsg(data) {
       store.commit("push", data);
@@ -1270,7 +1310,7 @@ if (uni.restoreGlobal) {
           data: d
         });
       } catch (e) {
-        formatAppLog("log", "at common/ws.js:109", e);
+        formatAppLog("log", "at common/ws.js:139", e);
       }
     }
   }
@@ -1335,7 +1375,7 @@ if (uni.restoreGlobal) {
           if (Object.keys(store.state.msgs).length == 0) {
             let toUid = Gtx.getLogin().uid == "123" ? "456" : "123";
             let tipCount = store.state.tipCount[toUid] == void 0 ? 0 : store.state.tipCount[toUid];
-            let session = new SessionBuilder().setAvatar("../../static/botAvatar.png").setName(toUid).setDate("12:00").setText("hi, sb").setTipCount(tipCount).build();
+            let session = new SessionBuilder().setAvatar("../static/botAvatar.png").setName(toUid).setDate("12:00").setText("hi, sb").setTipCount(tipCount).build();
             return [session];
           } else {
             let chatViews = [];
@@ -1343,20 +1383,24 @@ if (uni.restoreGlobal) {
               let msgs = store.state.msgs[toUid];
               let lastMsg = msgs[msgs.length - 1];
               let tipCount = store.state.tipCount[toUid] == void 0 ? 0 : store.state.tipCount[toUid];
-              let session = new SessionBuilder().setAvatar("../../static/botAvatar.png").setName(toUid).setDate(DateFormat.transform(lastMsg.sendTimestamp)).setText(lastMsg.data.text).setTipCount(tipCount).build();
+              let text = lastMsg.data.text.length > 24 ? lastMsg.data.text.slice(0, 24) + "..." : lastMsg.data.text;
+              let session = new SessionBuilder().setAvatar("../static/botAvatar.png").setName(toUid).setDate(DateFormat.transform(lastMsg.sendTimestamp)).setText(text).setTipCount(tipCount).build();
               chatViews.push(session);
             }
             return chatViews;
           }
         } catch (e) {
-          formatAppLog("log", "at pages/tabBar/index.vue:84", e);
+          formatAppLog("log", "at pages/index.vue:87", e);
         }
+      },
+      connectProcess() {
+        return store.state.connectProcess;
       }
     },
     created() {
       if (!Gtx.getLogin().uid) {
         uni.reLaunch({
-          url: "/pages/tabBar/login"
+          url: "/pages/login"
         });
         return;
       }
@@ -1365,13 +1409,23 @@ if (uni.restoreGlobal) {
     methods: {
       f(i) {
         uni.navigateTo({
-          url: "/pages/tabBar/chat?uid=" + i
+          url: "/pages/chat/personal?uid=" + i
         });
       }
     }
   };
   function _sfc_render$3(_ctx, _cache, $props, $setup, $data, $options) {
     return vue.openBlock(), vue.createElementBlock("view", { class: "content" }, [
+      $options.connectProcess != "ok" ? (vue.openBlock(), vue.createElementBlock(
+        "view",
+        {
+          key: 0,
+          class: "connectProcess"
+        },
+        vue.toDisplayString($options.connectProcess),
+        1
+        /* TEXT */
+      )) : vue.createCommentVNode("v-if", true),
       (vue.openBlock(true), vue.createElementBlock(
         vue.Fragment,
         null,
@@ -1428,24 +1482,63 @@ if (uni.restoreGlobal) {
       ))
     ]);
   }
-  const PagesTabBarIndex = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$3], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/index.vue"]]);
+  const PagesIndex = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$3], ["__file", "/Users/momo/P/Gim-uniapp/pages/index.vue"]]);
   const _sfc_main$3 = {
+    data() {
+      return {};
+    },
+    methods: {
+      quit() {
+        Gtx.login("");
+        uni.reLaunch({
+          url: "/pages/login"
+        });
+      }
+    }
+  };
+  function _sfc_render$2(_ctx, _cache, $props, $setup, $data, $options) {
+    return vue.openBlock(), vue.createElementBlock("view", { class: "content" }, [
+      vue.createElementVNode("view", { class: "header" }, [
+        vue.createElementVNode("image", {
+          class: "avatar",
+          src: "/static/avatar.png"
+        }),
+        vue.createElementVNode("view", { class: "relation" }, [
+          vue.createElementVNode("view", { class: "number" }, "12"),
+          vue.createElementVNode("view", { class: "text" }, "好友")
+        ]),
+        vue.createElementVNode("view", { class: "relation" }, [
+          vue.createElementVNode("view", { class: "number" }, "47"),
+          vue.createElementVNode("view", { class: "text" }, "群组")
+        ]),
+        vue.createElementVNode("view", { class: "relation" }, [
+          vue.createElementVNode("view", { class: "number" }, "5"),
+          vue.createElementVNode("view", { class: "text" }, "聊天室")
+        ])
+      ]),
+      vue.createElementVNode("view", { style: { "display": "flex", "flex-direction": "row" } }, [
+        vue.createElementVNode("view", { class: "name" }, "卡卡迪曼")
+      ]),
+      vue.createElementVNode("view", { class: "sign" }, " 签名：他写了个寂寞，并且一脸无辜～ "),
+      vue.createElementVNode("view", {
+        class: "setting",
+        onClick: _cache[0] || (_cache[0] = (...args) => $options.quit && $options.quit(...args))
+      }, "退出")
+    ]);
+  }
+  const PagesMy = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__file", "/Users/momo/P/Gim-uniapp/pages/my.vue"]]);
+  const _sfc_main$2 = {
     data() {
       return {
         username: "",
         password: ""
       };
     },
-    on() {
-      uni.switchTab({
-        url: "/pages/tabBar/index"
-      });
-    },
     methods: {
       login() {
         Gtx.login(this.username);
         uni.switchTab({
-          url: "/pages/tabBar/index"
+          url: "/pages/index"
         });
       },
       u_input(e) {
@@ -1464,7 +1557,7 @@ if (uni.restoreGlobal) {
       }
     }
   };
-  function _sfc_render$2(_ctx, _cache, $props, $setup, $data, $options) {
+  function _sfc_render$1(_ctx, _cache, $props, $setup, $data, $options) {
     return vue.openBlock(), vue.createElementBlock("view", { class: "content" }, [
       vue.createElementVNode("image", {
         onClick: _cache[0] || (_cache[0] = (...args) => $options.setting && $options.setting(...args)),
@@ -1498,22 +1591,22 @@ if (uni.restoreGlobal) {
       ])
     ]);
   }
-  const PagesTabBarLogin = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/login.vue"]]);
-  const _sfc_main$2 = {
+  const PagesLogin = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render$1], ["__file", "/Users/momo/P/Gim-uniapp/pages/login.vue"]]);
+  const _sfc_main$1 = {
     data() {
       return {
         message: "",
-        olda: false,
         toUid: "",
         val: "",
         scrollTop: 0,
         inputAreaHeight: "88px",
-        scrollRealHeight: 0
+        scrollRealHeight: 0,
+        loginUid: Gtx.getLogin().uid
       };
     },
     computed: {
       msgViewsHeight() {
-        return uni.getWindowInfo().windowHeight - 90 + "px";
+        return uni.getWindowInfo().windowHeight - 94 + "px";
       },
       msgs() {
         try {
@@ -1524,13 +1617,13 @@ if (uni.restoreGlobal) {
                 dt += d.height;
               });
               this.scrollRealHeight = dt;
-              formatAppLog("log", "at pages/tabBar/chat.vue:66", this.scrollRealHeight);
+              formatAppLog("log", "at pages/chat/personal.vue:64", this.scrollRealHeight);
               this.scrollTop = this.scrollRealHeight - parseInt(this.msgViewsHeight);
-              formatAppLog("log", "at pages/tabBar/chat.vue:68", this.scrollTop);
+              formatAppLog("log", "at pages/chat/personal.vue:66", this.scrollTop);
             }).exec();
           }, 10);
         } catch (e) {
-          formatAppLog("log", "at pages/tabBar/chat.vue:73", e);
+          formatAppLog("log", "at pages/chat/personal.vue:71", e);
         }
         let msgs = store.state.msgs[this.toUid] == void 0 ? [] : store.state.msgs[this.toUid];
         if (msgs.length != 0) {
@@ -1555,13 +1648,16 @@ if (uni.restoreGlobal) {
       });
     },
     methods: {
-      add(e) {
-        formatAppLog("log", "at pages/tabBar/chat.vue:116", e);
-      },
       theBlur(e) {
+        if (e.detail.value.indexOf("\n") != -1) {
+          uni.hideKeyboard();
+          this.confirm();
+          return;
+        }
         this.val = e.detail.value;
       },
       confirm(event) {
+        formatAppLog("log", "at pages/chat/personal.vue:124", "eee");
         try {
           let textMsg = new TextMsgBuilder().setFr(Gtx.getLogin().uid).setTo(this.toUid).setMsgType(consts.MSG_TYPE.TEXT).setText(this.val).build();
           store.commit("addReadMsgs", [textMsg.msgId]);
@@ -1569,7 +1665,7 @@ if (uni.restoreGlobal) {
           Chat.getInstance().pushMsg(textMsg);
           this.val = "";
         } catch (e) {
-          formatAppLog("log", "at pages/tabBar/chat.vue:140", e);
+          formatAppLog("log", "at pages/chat/personal.vue:141", e);
         }
       },
       dateTransform(t) {
@@ -1577,7 +1673,7 @@ if (uni.restoreGlobal) {
       }
     }
   };
-  function _sfc_render$1(_ctx, _cache, $props, $setup, $data, $options) {
+  function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
     return vue.openBlock(), vue.createElementBlock("view", { class: "content" }, [
       vue.createElementVNode("scroll-view", {
         style: vue.normalizeStyle({ height: $options.msgViewsHeight }),
@@ -1589,39 +1685,44 @@ if (uni.restoreGlobal) {
           null,
           vue.renderList($options.msgs["msgs"], (msgView, i) => {
             return vue.openBlock(), vue.createElementBlock("view", null, [
-              vue.createElementVNode("view", { class: "msgView" }, [
-                vue.createElementVNode("view", null, [
-                  vue.createElementVNode("image", {
-                    class: "avatar",
-                    src: "/static/botAvatar.png"
-                  })
-                ]),
-                vue.createElementVNode("view", { class: "textView" }, [
-                  vue.createElementVNode("view", { class: "textTitle" }, [
-                    vue.createElementVNode(
-                      "view",
-                      { style: { "margin-right": "10px" } },
-                      vue.toDisplayString(msgView.fr),
-                      1
-                      /* TEXT */
-                    ),
-                    vue.createElementVNode(
-                      "view",
-                      null,
-                      vue.toDisplayString($options.dateTransform(msgView.sendTimestamp)),
-                      1
-                      /* TEXT */
-                    )
-                  ]),
-                  vue.createElementVNode(
-                    "view",
-                    { class: "textContent" },
-                    vue.toDisplayString(msgView.data.text),
-                    1
-                    /* TEXT */
-                  )
-                ])
-              ])
+              msgView.fr == $data.loginUid ? (vue.openBlock(), vue.createElementBlock("view", {
+                key: 0,
+                class: "msgView",
+                style: { "justify-content": "flex-end" }
+              }, [
+                vue.createElementVNode(
+                  "view",
+                  {
+                    class: "text",
+                    style: { "margin-right": "5px", "background-color": "#d1f879" }
+                  },
+                  vue.toDisplayString(msgView.data.text),
+                  1
+                  /* TEXT */
+                ),
+                vue.createElementVNode("image", {
+                  class: "avatar",
+                  src: "/static/botAvatar.png"
+                })
+              ])) : (vue.openBlock(), vue.createElementBlock("view", {
+                key: 1,
+                class: "msgView"
+              }, [
+                vue.createElementVNode("image", {
+                  class: "avatar",
+                  src: "/static/botAvatar.png"
+                }),
+                vue.createElementVNode(
+                  "view",
+                  {
+                    class: "text",
+                    style: { "margin-left": "5px", "background-color": "aliceblue" }
+                  },
+                  vue.toDisplayString(msgView.data.text),
+                  1
+                  /* TEXT */
+                )
+              ]))
             ]);
           }),
           256
@@ -1636,7 +1737,7 @@ if (uni.restoreGlobal) {
           style: vue.normalizeStyle({ height: $data.inputAreaHeight })
         },
         [
-          vue.createElementVNode("input", {
+          vue.createElementVNode("textarea", {
             class: "input",
             placeholder: "输入新消息",
             onConfirm: _cache[0] || (_cache[0] = (...args) => $options.confirm && $options.confirm(...args)),
@@ -1657,55 +1758,11 @@ if (uni.restoreGlobal) {
       )
     ]);
   }
-  const PagesTabBarChat = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render$1], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/chat.vue"]]);
-  const _sfc_main$1 = {
-    data() {
-      return {};
-    },
-    methods: {
-      quit() {
-        Gtx.login("");
-        uni.reLaunch({
-          url: "/pages/tabBar/login"
-        });
-      }
-    }
-  };
-  function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
-    return vue.openBlock(), vue.createElementBlock("view", { class: "content" }, [
-      vue.createElementVNode("view", { class: "header" }, [
-        vue.createElementVNode("image", {
-          class: "avatar",
-          src: "/static/avatar.png"
-        }),
-        vue.createElementVNode("view", { class: "relation" }, [
-          vue.createElementVNode("view", { class: "number" }, "12"),
-          vue.createElementVNode("view", { class: "text" }, "好友")
-        ]),
-        vue.createElementVNode("view", { class: "relation" }, [
-          vue.createElementVNode("view", { class: "number" }, "47"),
-          vue.createElementVNode("view", { class: "text" }, "群组")
-        ]),
-        vue.createElementVNode("view", { class: "relation" }, [
-          vue.createElementVNode("view", { class: "number" }, "5"),
-          vue.createElementVNode("view", { class: "text" }, "聊天室")
-        ])
-      ]),
-      vue.createElementVNode("view", { style: { "display": "flex", "flex-direction": "row", "width": "100%" } }, [
-        vue.createElementVNode("view", { class: "name" }, "卡卡迪曼")
-      ]),
-      vue.createElementVNode("view", { class: "sign" }, " 签名：他写了个寂寞，并且一脸无辜～ "),
-      vue.createElementVNode("view", {
-        class: "setting",
-        onClick: _cache[0] || (_cache[0] = (...args) => $options.quit && $options.quit(...args))
-      }, "退出")
-    ]);
-  }
-  const PagesTabBarMy = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["render", _sfc_render], ["__file", "/Users/momo/P/Gim-uniapp/pages/tabBar/my.vue"]]);
-  __definePage("pages/tabBar/index", PagesTabBarIndex);
-  __definePage("pages/tabBar/login", PagesTabBarLogin);
-  __definePage("pages/tabBar/chat", PagesTabBarChat);
-  __definePage("pages/tabBar/my", PagesTabBarMy);
+  const PagesChatPersonal = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["render", _sfc_render], ["__file", "/Users/momo/P/Gim-uniapp/pages/chat/personal.vue"]]);
+  __definePage("pages/index", PagesIndex);
+  __definePage("pages/my", PagesMy);
+  __definePage("pages/login", PagesLogin);
+  __definePage("pages/chat/personal", PagesChatPersonal);
   const _sfc_main = {
     onLaunch: function() {
       formatAppLog("log", "at App.vue:4", "App Launch");

@@ -1,68 +1,73 @@
 import consts from "@/common/consts.js"
 import {Gtx} from "@/common/gtx.js"
 import store from '@/store/index.js'
-import {LoginMsgBuilder} from '@/common/builders/msgBuilder.js'
+import {LoginMsgBuilder, PullMsgBuilder, ReceiveMsgBuilder} from '@/common/builders/msgBuilder.js'
 
 class Chat {
 	
 	constructor() {
-		this.conn = null
 		this.socketTask = null
 		this.connecting = false
-		this.wsIp =  '127.0.0.1'
+		this.reconnectTimes = 0
 	}
 	
 	static getInstance() {
 		if (!this.instance) {
-			this.instance = new Chat
+			this.instance = new Chat()
 		}
 		return this.instance
 	}
 	
+	getWsIp() {
+		if (!this.wsIp && !(this.wsIp = uni.getStorageSync("wsIp"))) {
+			this.wsIp = '127.0.0.1'	
+		}
+		return this.wsIp
+	}
+	
 	setWsIp(wsIp) {
 		this.wsIp = wsIp
+		uni.setStorageSync("wsIp", wsIp)
 	}
 	
 	/**
 	 * 建立连接
 	 */
 	connect() {
+
 		
 		try {
 			
 			this.socketTask = uni.connectSocket({
-			  url: 'ws://' + this.wsIp + ':8081/websocket',
+			  url: 'ws://' + this.getWsIp() + ':8081/websocket',
 			  success() {
-				  console.log("正在建立链接")
+				  console.log("开始建立连接")
 				  return this.socketTask
 			  }
 			});
 			
+			
 			this.socketTask.onMessage((data) => {
-				
 				console.log("收到数据:"+data.data)
 				this.onMessage(JSON.parse(data.data))
 			})
 			
 			this.socketTask.onOpen((e) => {
-				console.log("连接已打开")
+				console.log("连接已打开")	
+				store.commit('setConnectProcess', 'ok')		
+				this.reconnectTimes = 0
+				this.login()
+				this.pullMsg()
 				
-				let loginMsg = new LoginMsgBuilder()
-					.setFr(Gtx.getLogin().uid)
-					.setMsgType(consts.MSG_TYPE.LOGIN)
-					.build()
-				
-				this.send(loginMsg)
 			})
 			
+	
 			this.socketTask.onError((e) => {
-				console.log("连接报错")
-				this.reconnect('e')
+				this.reconnect()
 			})
 			
 			this.socketTask.onClose((e) => {
-				console.log("链接已经关闭")
-				this.reconnect('c')
+				this.reconnect()
 			})
 			
 		} catch(e) {
@@ -71,16 +76,41 @@ class Chat {
 		
 	}
 	
-	reconnect(tag) {
+	login() {
+		let loginMsg = new LoginMsgBuilder()
+			.setFr(Gtx.getLogin().uid)
+			.setMsgType(consts.MSG_TYPE.LOGIN)
+			.build()
+		this.send(loginMsg)
+	}
+	
+	pullMsg() {
+		let pullMsg = new PullMsgBuilder()
+			.setFr(Gtx.getLogin().uid)
+			.setMsgType(consts.MSG_TYPE.PULL_MSG)
+			.build()
+		this.send(pullMsg)
+	}
+	
+	recevieMsg(seqs) {
+		let receiveMsg = new ReceiveMsgBuilder()
+			.setFr(Gtx.getLogin().uid)
+			.setMsgType(consts.MSG_TYPE.RECEIVE_MSG)
+			.setSeqs(seqs)
+			.build()
+		this.send(receiveMsg)
+	}
+
+	reconnect() {
 		if (this.connecting) {
 			return
 		}
+		store.commit('setConnectProcess', '连接失败,' + '第' + ++this.reconnectTimes + '次重连...' + this.wsIp)
 		this.connecting = true;
 		setTimeout(() => {
-			console.log("开始重连...")
 			this.connect()
 			this.connecting = false;
-		}, 3000)
+		}, 2000)
 	}
 	
 	pushMsg(data) {
